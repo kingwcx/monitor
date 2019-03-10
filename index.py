@@ -11,6 +11,9 @@ import socket
 import time
 import threading
 
+from analyse import scan
+from analyse import save
+
 # ===================================================#
 
 # 窗口构建
@@ -18,6 +21,42 @@ win = tk.Tk()
 win.title("Python 图形用户界面")
 win.resizable(0, 0)
 
+#  菜单栏--------------------------------------
+
+# 创建菜单栏功能
+menuBar = Menu(win)
+win.config(menu=menuBar)
+
+# 创建一个名为文件的菜单项
+fileMenu = Menu(menuBar, tearoff=0)
+menuBar.add_cascade(label="文件", menu=fileMenu)
+fileMenu.add_command(label="打开")
+
+
+def _save():
+	tab1_scr1_log.insert(END, '保存\n')
+
+
+fileMenu.add_command(label="保存", command=_save)
+
+
+def _quit():
+	"""结束主事件循环"""
+	win.quit()  # 关闭窗口
+	win.destroy()  # 将所有的窗口小部件进行销毁，应该有内存回收的意思
+	exit()
+
+
+fileMenu.add_command(label="退出", command=_quit)
+
+# 创建一个名为页面的菜单项
+viewMenu = Menu(menuBar, tearoff=0)
+menuBar.add_cascade(label="页面", menu=viewMenu)
+viewMenu.add_command(label="tab1")
+viewMenu.add_command(label="tab2")
+viewMenu.add_command(label="tab3")
+viewMenu.add_separator()
+viewMenu.add_command(label="清空消息")
 # tab切换控制 --------------------------------------
 tabControl = ttk.Notebook(win)  # 构建一个tab
 
@@ -30,7 +69,7 @@ tabControl.add(tab2, text='网络嗅探')
 tab3 = ttk.Frame(tabControl)  # Tab3
 tabControl.add(tab3, text='端口扫描')
 
-tabControl.pack(expand=1, fill="both")  # Pack to make visible
+tabControl.pack(expand=1, fill="both")
 # -----------------------------------------
 
 # ==========================Tab1控件=============================#
@@ -43,15 +82,18 @@ tab1_IP_number = 1
 tab1_restart = True
 # 每个ip出现个数
 tab1_ip_list = {}
+#包储存
+tab1_dpkt = None
 
 
 # ==========================Tab1监控函数=========================#
-#sniff终止回调函数
+# sniff终止回调函数
 def tab1_stop_sniffing(x):
 	global tab1_switch
 	return tab1_switch
 
-#嗅探回调函数
+
+# 嗅探回调函数
 def tab1_pack_callback(packet):
 	try:
 		global tab1_IP_number
@@ -61,11 +103,11 @@ def tab1_pack_callback(packet):
 			tab1_ip_list[packet[IP].src] += 1
 		else:
 			tab1_ip_list[packet[IP].src] = 1
-		#取出源地址与目的地址
+		# 取出源地址与目的地址
 		src = packet[IP].src
 		dst = packet[IP].dst
-		#插入tk图形页面tab1_list_tree
-		tab1_list_tree.insert("", 'end', tab1_IP_number,
+		# 插入tk图形页面tab1_list_tree
+		tab1_list_tree.insert("", 'end', tab1_IP_number, text=tab1_IP_number,
 		                      values=(tab1_IP_number, src, dst))
 		tab1_list_tree.update_idletasks()  # 更新列表，不需要修改
 		tab1_IP_number += 1
@@ -80,9 +122,8 @@ def tab1_pack_callback(packet):
 
 def tab1_capture():
 	print('debug:capturing....')
-	dpkt = sniff(prn=tab1_pack_callback, filter="ip", stop_filter=tab1_stop_sniffing)
-	print('debug:stoping1....')
-	wrpcap("datas/pkts.pcap", dpkt)
+	global tab1_dpkt
+	tab1_dpkt = sniff(prn=tab1_pack_callback, filter="ip", stop_filter=tab1_stop_sniffing)
 
 
 # return dpkt
@@ -107,7 +148,7 @@ def button1_start_click():
 	global tab1_restart
 	global tab1_ip_list
 	global tab1_list_tree
-	if tab1_restart == True:  #初始化
+	if tab1_restart == True:  # 初始化
 		tab1_IP_number = 0
 		tab1_restart = False
 		# 清空已经抓到的数据包列表--------------
@@ -155,7 +196,7 @@ def button1_quit_click():
 	tab1_switch = True  # 停止进程
 	tab1_restart = True  # 重新开始标志
 	time.sleep(1)
-	#统计ip包数目并展示在tab1_scr1_log
+	# 统计ip包数目并展示在tab1_scr1_log
 	tab1_scr1_log.insert(END, '停止监控\n')
 	tab1_scr1_log.insert(END, '共抓到' + str(tab1_IP_number) + '个IP包\n')
 	for (key, value) in tab1_ip_list.items():
@@ -164,6 +205,8 @@ def button1_quit_click():
 
 # 保存按钮函数
 def button1_save_click():
+	global tab1_dpkt
+	save.save(tab1_dpkt,"tab1")
 	tab1_scr1_log.insert(END, '保存\n')
 
 
@@ -191,7 +234,7 @@ tab1_list_tree_columnspan = 6  # listbox文本宽度
 # 包列表
 tab1_list_tree = ttk.Treeview(monty1, show="headings", height=tab1_scrolH)
 tab1_list_tree.grid(column=0, row=tab1_list_tree_row, sticky='WE', columnspan=tab1_list_tree_columnspan)
-tab1_list_tree["columns"] = ("No.", "Source", "Destination")
+tab1_list_tree["columns"] = ("No.", "源地址", "Destination")
 tab1_list_tree_column_width = [120, 200, 200]
 for column_name, column_width in zip(tab1_list_tree["columns"], tab1_list_tree_column_width):
 	tab1_list_tree.column(column_name, width=column_width, anchor='w')
@@ -225,6 +268,8 @@ tab2_packet_number = 1
 tab2_restart = True
 # 包列表
 packet_list = []
+#包储存
+tab2_dpkt = None
 
 
 # ==========================Tab2监控函数=========================#
@@ -272,17 +317,17 @@ def tab2_pack_callback(packet):
 
 			# 包过滤  未完成
 			add_flag = 0  # 是否过滤标志
-			if chVar_ARP.get() == 1 and proto == 'ARP': #ARP包过滤
+			if chVar_ARP.get() == 1 and proto == 'ARP':  # ARP包过滤
 				add_flag = 1
-			if chVar_ICMP.get() == 1 and proto == 'ICMP': #ICMP包过滤
+			if chVar_ICMP.get() == 1 and proto == 'ICMP':  # ICMP包过滤
 				add_flag = 1
-			if chVar_IP.get() == 1 and proto == 'IP':  #IP包过滤
+			if chVar_IP.get() == 1 and proto == 'IP':  # IP包过滤
 				add_flag = 1
-			if chVar_TCP.get() == 1 and proto == 'TCP': #TCP包过滤
+			if chVar_TCP.get() == 1 and proto == 'TCP':  # TCP包过滤
 				add_flag = 1
-			if chVar_UDP.get() == 1 and proto == 'UDP':  #UDP包过滤
+			if chVar_UDP.get() == 1 and proto == 'UDP':  # UDP包过滤
 				add_flag = 1
-			#其他包过滤
+			# 其他包过滤
 			if chVar_Others.get() == 1 and add_flag == 1:
 				add_flag = 1
 			elif chVar_Others.get() == 1 and add_flag == 0:
@@ -324,9 +369,11 @@ def tab2_capture():
 	if (dst_str != ''):
 		filter_str = filter_str + "dst net " + dst_str
 
-	dpkt = sniff(prn=tab2_pack_callback, filter=filter_str, stop_filter=tab2_stop_sniffing)
+	global tab2_dpkt
+	tab2_dpkt = sniff(prn=tab2_pack_callback, filter=filter_str, stop_filter=tab2_stop_sniffing)
 	print('debug:stoping capturing1....')
 	# wrpcap("datas/pkts.pcap", dpkt)
+
 
 # 数据包解析响应
 def on_click_packet_list_tree(event):
@@ -383,7 +430,7 @@ def button2_start_click():
 	global tab2_restart
 	global tab2_ip_list
 	global tab2_list_tree
-	if tab2_restart == True:   #初始化
+	if tab2_restart == True:  # 初始化
 		tab2_packet_number = 1
 		tab2_restart = False
 		# 清空已经抓到的数据包列表--------------
@@ -448,9 +495,97 @@ def button2_quit_click():
 	tab2_restart = True  # 重新开始标志
 	time.sleep(1)  # 停止1s，等待进程彻底结束
 
+
 # 保存按钮函数
 def button2_save_click():
-	print('debug：保存')
+	global tab2_dpkt
+	save.save(tab2_dpkt,"tab2")
+	print('debug：保存按钮')
+
+
+# 下拉框绑定函数
+def box_change(*args):
+	print(args)
+	print(comboxlist.get())
+	if comboxlist.get() == 'ARP':
+		if chVar_ARP.get() == 1:
+			print('debug：关闭ARP过滤')
+			check1.deselect()
+		else:
+			print('debug：只开启ARP过滤')
+			check1.select()
+
+			check2.deselect()
+			check3.deselect()
+			check4.deselect()
+			check5.deselect()
+			check6.deselect()
+	elif comboxlist.get() == 'IP':
+		if chVar_IP.get() == 1:
+			print('debug：关闭IP过滤')
+			check2.deselect()
+		else:
+			print('debug：只开启IP过滤')
+			check2.select()
+
+			check1.deselect()
+			check3.deselect()
+			check4.deselect()
+			check5.deselect()
+			check6.deselect()
+	elif comboxlist.get() == 'TCP':
+		if chVar_TCP.get() == 1:
+			print('debug：关闭TCP过滤')
+			check3.deselect()
+		else:
+			print('debug：只开启TCP过滤')
+			check3.select()
+
+			check1.deselect()
+			check2.deselect()
+			check4.deselect()
+			check5.deselect()
+			check6.deselect()
+	elif comboxlist.get() == 'UDP':
+		if chVar_UDP.get() == 1:
+			print('debug：关闭UDP过滤')
+			check4.deselect()
+		else:
+			print('debug：只开启过滤')
+			check4.select()
+
+			check1.deselect()
+			check2.deselect()
+			check3.deselect()
+			check5.deselect()
+			check6.deselect()
+	elif comboxlist.get() == 'ICMP':
+		if chVar_ICMP.get() == 1:
+			print('debug：关闭ICMP过滤')
+			check5.deselect()
+		else:
+			print('debug：只开启ICMP过滤')
+			check5.select()
+
+			check1.deselect()
+			check2.deselect()
+			check3.deselect()
+			check4.deselect()
+			check6.deselect()
+	else:
+		if chVar_Others.get() == 1:
+			print('debug：关闭其他包过滤')
+			check6.deselect()
+		else:
+			print('debug：只开启其他包过滤')
+			check6.select()
+
+			check1.deselect()
+			check2.deselect()
+			check3.deselect()
+			check4.deselect()
+			check5.deselect()
+
 
 # 按钮1-开始监控按钮
 button2_start = ttk.Button(monty2, text="开始嗅探", width=10, command=button2_start_click)
@@ -468,48 +603,58 @@ button2_quit.grid(column=2, row=1, ipady=3, sticky='W')
 button2_save = ttk.Button(monty2, text="保存数据", width=10, state='disabled', command=button2_save_click)
 button2_save.grid(column=3, row=1, ipady=3, sticky='W')
 
+# 构建下拉框
+comvalue = tk.StringVar()  # 窗体自带的文本，新建一个值
+comboxlist = ttk.Combobox(monty2, textvariable=comvalue)  # 初始化
+comboxlist["values"] = ("全选", "ARP", "IP", "TCP", "UDP", "ICMP", "others")
+comboxlist.current(0)  # 选择第一个
+comboxlist.bind("<<ComboboxSelected>>",box_change)  #绑定事件,(下拉列表框被选中时，绑定box_change()函数)
+comboxlist.grid(column=0, row=2, columnspan=2, sticky=tk.W)
+
+check_row = 3
 # 构建复选框
 chVar_ARP = tk.IntVar()
 check1 = tk.Checkbutton(monty2, text="ARP", onvalue=1, offvalue=0, variable=chVar_ARP)
 check1.select()
-check1.grid(column=0, row=2, sticky=tk.W)
+check1.grid(column=0, row=check_row, sticky=tk.W)
 
 chVar_IP = tk.IntVar()
 check2 = tk.Checkbutton(monty2, text="IP", variable=chVar_IP)
 check2.select()
-check2.grid(column=1, row=2, sticky=tk.W)
+check2.grid(column=1, row=check_row, sticky=tk.W)
 
 chVar_TCP = tk.IntVar()
 check3 = tk.Checkbutton(monty2, text="TCP", variable=chVar_TCP)
 check3.select()
-check3.grid(column=2, row=2, sticky=tk.W)
+check3.grid(column=2, row=check_row, sticky=tk.W)
 
 chVar_UDP = tk.IntVar()
 check4 = tk.Checkbutton(monty2, text="UDP", variable=chVar_UDP)
 check4.select()
-check4.grid(column=3, row=2, sticky=tk.W)
+check4.grid(column=3, row=check_row, sticky=tk.W)
 
 chVar_ICMP = tk.IntVar()
 check5 = tk.Checkbutton(monty2, text="ICMP", variable=chVar_ICMP)
 check5.select()
-check5.grid(column=4, row=2, sticky=tk.W)
+check5.grid(column=4, row=check_row, sticky=tk.W)
 
 chVar_Others = tk.IntVar()
 check6 = tk.Checkbutton(monty2, text="Others", variable=chVar_Others)
 check6.select()
-check6.grid(column=5, row=2, sticky=tk.W)
+check6.grid(column=5, row=check_row, sticky=tk.W)
 
+input_row = 4
 # 输入框1
-ttk.Label(monty2, text="源IP过滤:").grid(column=0, row=3, sticky='W')
+ttk.Label(monty2, text="源IP过滤:").grid(column=0, row=input_row, sticky='W')
 src_IP = tk.StringVar()
 src_Entered = ttk.Entry(monty2, width=12, textvariable=src_IP)
-src_Entered.grid(column=1, row=3, columnspan=2, sticky='W')
+src_Entered.grid(column=1, row=input_row, columnspan=2, sticky='W')
 
 # 输入框2
-ttk.Label(monty2, text="目的IP过滤:").grid(column=3, row=3, sticky='W')
+ttk.Label(monty2, text="目的IP过滤:").grid(column=3, row=input_row, sticky='W')
 dst_IP = tk.StringVar()
 dst_Entered = ttk.Entry(monty2, width=12, textvariable=dst_IP)
-dst_Entered.grid(column=4, row=3, columnspan=2, sticky='W')
+dst_Entered.grid(column=4, row=input_row, columnspan=2, sticky='W')
 
 # 输入栏长宽
 tab2_scrolW = 60
@@ -579,6 +724,7 @@ def get_localip():
 	ip_str = socket.gethostbyname(socket.gethostname())
 	return ip_str
 
+
 # 扫描指定网段在线主机
 def nmap_ping_scan(network_segment):
 	# 创建一个扫描实例
@@ -602,17 +748,18 @@ def nmap_ping_scan(network_segment):
 			tab3_list_tree.update_idletasks()  # 更新列表，不需要修改
 		tab3_host_number += 1
 
+
 # 扫描指定主机端口
 def scan(network_host):
 	print("debug:scan")
 	nm = nmap.PortScannerYield()
 	port_str = "1-1023"
 	port_get = port_Entered.get()
-	if port_get != '' and int(port_get)>=0 and int(port_get)<= 65535:
+	if port_get != '' and int(port_get) >= 0 and int(port_get) <= 65535:
 		port_str = port_get
 	try:
 		print("debug:start scan")
-		for scan_result in nm.scan(hosts=network_host, arguments='-sT -p '+ port_str):
+		for scan_result in nm.scan(hosts=network_host, arguments='-sT -p ' + port_str):
 			global tab3_port_number
 			global tab3_port_list_tree
 			results = scan_result[1]
@@ -626,6 +773,7 @@ def scan(network_host):
 	except:
 		print("debug:可能被防火墙过滤")
 
+
 # 主机列表单机响应
 def on_click_host_list_tree(event):
 	selected_item = event.widget.selection()
@@ -634,10 +782,12 @@ def on_click_host_list_tree(event):
 	tab3_host_ip = tab3_host_list[int(selected_item[0]) - 1]
 	host_label.configure(text=tab3_host_ip)
 
+
 # ============================================================#
 # tab3的容器
 monty3 = ttk.LabelFrame(tab3, text='端口扫描')
 monty3.grid(column=0, row=0, padx=2, pady=4)
+
 
 def button3_start_host_click():
 	global tab3_list_tree
@@ -651,6 +801,7 @@ def button3_start_host_click():
 		tab3_list_tree.clipboard_clear()
 	nmap_ping_scan(get_localip() + '/24')
 
+
 def button3_start_port_click():
 	global tab3_port_list_tree
 	global tab3_port_number
@@ -663,7 +814,7 @@ def button3_start_port_click():
 		tab3_port_list_tree.clipboard_clear()
 
 	global tab3_host_ip
-	#多线程
+	# 多线程
 	# global tab3_scan_thread
 	# if (tab3_scan_thread is None) or (not tab3_scan_thread.is_alive()):
 	# 	tab3_scan_thread = threading.Thread(target=scan(tab3_host_ip))
@@ -671,6 +822,7 @@ def button3_start_port_click():
 	# else:
 	# 	print('debug:already running')
 	scan(tab3_host_ip)
+
 
 # 输入框1
 ttk.Label(monty3, text="扫描在线主机").grid(column=0, row=3, sticky='W')

@@ -10,11 +10,8 @@ def pack_callback(packet):
 	#packet.show()
 
 def capture():
-	print('capturing....')
-	dpkt = sniff(prn=pack_callback, filter="ip")
-	#dpkt = sniff(10)
-	wrpcap("../datas/pkts.pcap", dpkt)
-	return dpkt
+	print('debug:testing')
+
 
 if __name__ == '__main__':
 	capture()
